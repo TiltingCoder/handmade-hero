@@ -6,15 +6,3 @@ ColumnLimit: 100
 
 # Windows headers depend on include order — don't reorder them.
 SortIncludes: false
-
-# All params/args on one line, or one per line — never packed across lines.
-BinPackArguments: false
-BinPackParameters: false
-AllowAllArgumentsOnNextLine: false
-AllowAllParametersOfDeclarationOnNextLine: false
-
-# When wrapping: break after '(', one param per line, ')' on its own line, then ') {'.
-AlignAfterOpenBracket: BlockIndent
-AlwaysBreakAfterReturnType: None
-BreakBeforeBraces: Attach
-ContinuationIndentWidth: 4
