@@ -4,6 +4,9 @@ TabWidth: 4
 UseTab: Never
 ColumnLimit: 100
 
+# Windows headers depend on include order — don't reorder them.
+SortIncludes: false
+
 # All params/args on one line, or one per line — never packed across lines.
 BinPackArguments: false
 BinPackParameters: false
