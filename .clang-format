@@ -1,0 +1,17 @@
+BasedOnStyle: LLVM
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 100
+
+# All params/args on one line, or one per line — never packed across lines.
+BinPackArguments: false
+BinPackParameters: false
+AllowAllArgumentsOnNextLine: false
+AllowAllParametersOfDeclarationOnNextLine: false
+
+# When wrapping: break after '(', one param per line, ')' on its own line, then ') {'.
+AlignAfterOpenBracket: BlockIndent
+AlwaysBreakAfterReturnType: None
+BreakBeforeBraces: Attach
+ContinuationIndentWidth: 4

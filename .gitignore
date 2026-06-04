@@ -1,0 +1,14 @@
+build/
+build/int/
+*.exe
+*.obj
+*.pdb
+
+sync.config
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.idb
+*.ilk
