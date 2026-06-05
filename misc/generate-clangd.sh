@@ -30,6 +30,9 @@ CompileFlags:
     - ${sdk_inc}um
     - -isystem
     - ${sdk_inc}shared
+
+Completion:
+  HeaderInsertion: Never
 EOF
 
 echo "Wrote $repo_root/.clangd"
