@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <Xinput.h>
 #include <libloaderapi.h>
+#include <dsound.h>
 
 struct Win32OffscreenBuffer {
     BITMAPINFO Info;
@@ -18,21 +19,85 @@ struct Win32WindowSize {
 };
 
 #define X_INPUT_GET_STATE(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_STATE *pState)
-#define X_INPUT_SET_STATE(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_VIBRATION *pVibration)
 typedef X_INPUT_GET_STATE(x_input_get_state);
-typedef X_INPUT_SET_STATE(x_input_set_state);
-X_INPUT_GET_STATE(XInputGetStateStub) { return 0; }
-X_INPUT_SET_STATE(XInputSetStateStub) { return 0; }
+X_INPUT_GET_STATE(XInputGetStateStub) { return ERROR_DEVICE_NOT_CONNECTED; }
 static x_input_get_state *XInputGetState_ = XInputGetStateStub;
-static x_input_set_state *XInputSetState_ = XInputSetStateStub;
 #define XInputGetState XInputGetState_
+
+#define X_INPUT_SET_STATE(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_VIBRATION *pVibration)
+typedef X_INPUT_SET_STATE(x_input_set_state);
+X_INPUT_SET_STATE(XInputSetStateStub) { return ERROR_DEVICE_NOT_CONNECTED; }
+static x_input_set_state *XInputSetState_ = XInputSetStateStub;
 #define XInputSetState XInputSetState_
 
+#define DIRECT_SOUND_CREATE(name)                                                                  \
+    HRESULT WINAPI name(LPCGUID pcGuidDevice, LPDIRECTSOUND *ppDS, LPUNKNOWN pUnkOuter)
+typedef DIRECT_SOUND_CREATE(direct_sound_create);
+
 static void Win32LoadXInput() {
-    HMODULE XInputLibrary = LoadLibraryA("xinput1_3.dll");
+    HMODULE XInputLibrary = LoadLibraryA("xinput1_4.dll");
+    if (!XInputLibrary) {
+        XInputLibrary = LoadLibraryA("xinput1_3.dll");
+    }
     if (XInputLibrary) {
         XInputGetState = (x_input_get_state *)GetProcAddress(XInputLibrary, "XInputGetState");
+        if (!XInputGetState) {
+            XInputGetState = XInputGetStateStub;
+        }
         XInputSetState = (x_input_set_state *)GetProcAddress(XInputLibrary, "XInputSetState");
+        if (!XInputSetState) {
+            XInputSetState = XInputSetStateStub;
+        }
+    }
+}
+
+static void Win32InitDSound(HWND Window, int32_t SamplePerSec, int32_t BufferSize) {
+    HMODULE DSoundLibrary = LoadLibraryA("dsound.dll");
+    if (DSoundLibrary) {
+        direct_sound_create *DirectSoundCreate =
+            (direct_sound_create *)GetProcAddress(DSoundLibrary, "DirectSoundCreate");
+        LPDIRECTSOUND DirectSound;
+        if (DirectSoundCreate && SUCCEEDED(DirectSoundCreate(0, &DirectSound, 0))) {
+            if (SUCCEEDED(DirectSound->SetCooperativeLevel(Window, DSSCL_PRIORITY))) {
+                WAVEFORMATEX WaveFormat = {};
+                WaveFormat.wFormatTag = WAVE_FORMAT_PCM;
+                WaveFormat.nChannels = 2;
+                WaveFormat.nSamplesPerSec = SamplePerSec;
+                WaveFormat.wBitsPerSample = 16;
+                WaveFormat.nBlockAlign = (WaveFormat.nChannels * WaveFormat.wBitsPerSample) / 8;
+                WaveFormat.nAvgBytesPerSec = WaveFormat.nSamplesPerSec * WaveFormat.nBlockAlign;
+                WaveFormat.cbSize = 0;
+
+                DSBUFFERDESC PrimBuffDesc = {};
+                PrimBuffDesc.dwSize = sizeof(PrimBuffDesc);
+                PrimBuffDesc.dwFlags = DSBCAPS_PRIMARYBUFFER;
+                LPDIRECTSOUNDBUFFER PrimaryBuffer;
+                if (SUCCEEDED(DirectSound->CreateSoundBuffer(&PrimBuffDesc, &PrimaryBuffer, 0))) {
+                    if (SUCCEEDED(PrimaryBuffer->SetFormat(&WaveFormat))) {
+
+                    } else {
+                        OutputDebugStringA("PrimaryBuffer SetFormat Failed\n");
+                    }
+                } else {
+                    OutputDebugStringA("PrimaryBuffer CreateSoundBuffer Failed\n");
+                }
+
+                DSBUFFERDESC SecBuffDesc = {};
+                SecBuffDesc.dwSize = sizeof(SecBuffDesc);
+                SecBuffDesc.dwFlags = 0;
+                SecBuffDesc.dwBufferBytes = BufferSize;
+                SecBuffDesc.lpwfxFormat = &WaveFormat;
+                LPDIRECTSOUNDBUFFER SecondaryBuffer;
+                if (SUCCEEDED(DirectSound->CreateSoundBuffer(&SecBuffDesc, &SecondaryBuffer, 0))) {
+                } else {
+                    OutputDebugStringA("SecondaryBuffer CreateSoundBuffer Failed\n");
+                }
+            } else {
+                OutputDebugStringA("SetCooperativeLevel Failed\n");
+            }
+        } else {
+            OutputDebugStringA("No DirectSoundCreate\n");
+        }
     }
 }
 
@@ -57,7 +122,7 @@ static void RenderWeirdGradiant(Win32OffscreenBuffer *Buffer, int XOffset, int Y
         for (int x = 0; x < Buffer->Width; x++) {
             /*
                 Pixel in Memory: BB GG RR xx
-                             0X  xx RR GG BB
+                              0X xx RR GG BB
             */
             uint8_t Blue = (uint8_t)x + XOffset;
             uint8_t Green = (uint8_t)y + YOffset;
@@ -115,12 +180,11 @@ LRESULT CALLBACK MainWindowCallback(HWND Window, UINT Message, WPARAM WParam, LP
     case WM_SYSKEYUP:
     case WM_KEYDOWN:
     case WM_KEYUP: {
-        uint32_t VKCode = WParam;
         bool WasDown = !!(LParam & 1 << 30);
         bool IsDown = !(LParam & 1 << 31);
 
         if (WasDown != IsDown) {
-            switch (VKCode) {
+            switch (WParam) {
             case 'W': {
                 OutputDebugStringA("W\n");
             } break;
@@ -168,6 +232,10 @@ LRESULT CALLBACK MainWindowCallback(HWND Window, UINT Message, WPARAM WParam, LP
             } break;
             }
         }
+
+        if (WParam == VK_F4 && !!(LParam & 1 << 29)) {
+            Running = false;
+        }
     } break;
 
     case WM_PAINT: {
@@ -204,6 +272,8 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE, LPSTR, int) {
             HDC DeviceContext = GetDC(Window);
             int XOffset = 0;
             int YOffset = 0;
+
+            Win32InitDSound(Window, 48000, 48000 * sizeof(int16_t) * 2);
 
             Running = true;
             while (Running) {
