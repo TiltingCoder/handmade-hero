@@ -1,7 +1,7 @@
 CompileFlags:
   Add:
     - --target=x86_64-pc-windows-msvc
-    - -std=c++20
+    - -std=c++14
     - -fms-compatibility
     - -fms-extensions
     - -D_WIN64

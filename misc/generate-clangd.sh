@@ -13,11 +13,11 @@ if [[ -z "$msvc_inc" || -z "$sdk_inc" ]]; then
   exit 1
 fi
 
-cat > "$repo_root/.clangd" <<EOF
+cat >"$repo_root/.clangd" <<EOF
 CompileFlags:
   Add:
     - --target=x86_64-pc-windows-msvc
-    - -std=c++20
+    - -std=c++14
     - -fms-compatibility
     - -fms-extensions
     - -D_WIN64
