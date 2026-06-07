@@ -9,7 +9,7 @@ set "BUILD_DIR=%ROOT%\build"
 set "TARGET=handmade-hero"
 set "SOURCE=..\src\win32-handmade.cpp"
 
-set "CL_FLAGS=-FS -FC -Zi "
+set "CL_FLAGS=-O2 -FS -FC -Zi "
 set "CL_OUTPUT=-Fe:%TARGET%.exe -Fd:%TARGET%.pdb -Fo:%TARGET%.obj"
 set "LIBS=user32.lib Gdi32.lib "
 

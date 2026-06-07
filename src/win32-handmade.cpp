@@ -4,6 +4,7 @@
 #include <libloaderapi.h>
 #include <dsound.h>
 #include <math.h>
+#include <stdio.h>
 
 #define PI 3.14159265358979323846f
 
@@ -75,8 +76,7 @@ static void Win32LoadXInput() {
 static void Win32InitDSound(HWND Window, int32_t SamplePerSec, int32_t BufferSize) {
     HMODULE DSoundLibrary = LoadLibraryA("dsound.dll");
     if (DSoundLibrary) {
-        directSoundCreate_t *DirectSoundCreate =
-            (directSoundCreate_t *)GetProcAddress(DSoundLibrary, "DirectSoundCreate");
+        directSoundCreate_t *DirectSoundCreate = (directSoundCreate_t *)GetProcAddress(DSoundLibrary, "DirectSoundCreate");
         LPDIRECTSOUND DirectSound;
         if (DirectSoundCreate && SUCCEEDED(DirectSoundCreate(0, &DirectSound, 0))) {
             if (SUCCEEDED(DirectSound->SetCooperativeLevel(Window, DSSCL_PRIORITY))) {
@@ -95,7 +95,6 @@ static void Win32InitDSound(HWND Window, int32_t SamplePerSec, int32_t BufferSiz
                 LPDIRECTSOUNDBUFFER PrimaryBuffer;
                 if (SUCCEEDED(DirectSound->CreateSoundBuffer(&PrimBuffDesc, &PrimaryBuffer, 0))) {
                     if (SUCCEEDED(PrimaryBuffer->SetFormat(&WaveFormat))) {
-
                     } else {
                         OutputDebugStringA("PrimaryBuffer SetFormat Failed\n");
                     }
@@ -127,8 +126,7 @@ static void Win32FillSoundBuffer(Win32SoundOutput *SoundOutput, DWORD BytesToLoc
     VOID *Region2;
     DWORD Region2Size;
 
-    if (SUCCEEDED(
-            SecondaryBuffer->Lock(BytesToLock, BytesToWrite, &Region1, &Region1Size, &Region2, &Region2Size, 0))) {
+    if (SUCCEEDED(SecondaryBuffer->Lock(BytesToLock, BytesToWrite, &Region1, &Region1Size, &Region2, &Region2Size, 0))) {
         int16_t *SampleOut = (int16_t *)Region1;
         DWORD Region1SampleCount = Region1Size / SoundOutput->BytesPerSample;
         for (DWORD SampleIndex = 0; SampleIndex < Region1SampleCount; SampleIndex++) {
@@ -153,7 +151,7 @@ static void Win32FillSoundBuffer(Win32SoundOutput *SoundOutput, DWORD BytesToLoc
 
         SecondaryBuffer->Unlock(Region1, Region1Size, Region2, Region2Size);
     } else {
-        OutputDebugStringA("Lock Failed\n");
+        // OutputDebugStringA("Lock Failed\n");
     }
 }
 
@@ -208,8 +206,8 @@ static void Win32ResizeDIBSection(Win32OffscreenBuffer *Buffer, int Width, int H
 }
 
 static void Win32DisplayBufferInWindow(HDC DeviceContext, Win32OffscreenBuffer *Buffer, int Width, int Height) {
-    StretchDIBits(DeviceContext, 0, 0, Width, Height, 0, 0, Buffer->Width, Buffer->Height, Buffer->Memory,
-                  &Buffer->Info, DIB_RGB_COLORS, SRCCOPY);
+    StretchDIBits(DeviceContext, 0, 0, Width, Height, 0, 0, Buffer->Width, Buffer->Height, Buffer->Memory, &Buffer->Info,
+                  DIB_RGB_COLORS, SRCCOPY);
 }
 
 LRESULT CALLBACK MainWindowCallback(HWND Window, UINT Message, WPARAM WParam, LPARAM LParam) {
@@ -307,6 +305,9 @@ LRESULT CALLBACK MainWindowCallback(HWND Window, UINT Message, WPARAM WParam, LP
 }
 
 int WINAPI WinMain(HINSTANCE Instance, HINSTANCE, LPSTR, int) {
+    LARGE_INTEGER PerfCounterFrequency;
+    QueryPerformanceFrequency(&PerfCounterFrequency);
+
     Win32LoadXInput();
     WNDCLASSA windowClass = {};
     Win32ResizeDIBSection(&GBuffer, 1280, 720);
@@ -316,6 +317,7 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE, LPSTR, int) {
     windowClass.hInstance = Instance;
     // windowClass.hIcon
     windowClass.lpszClassName = "HandmadeHeroWindowClass";
+
     if (RegisterClassA(&windowClass)) {
         HWND Window = CreateWindowExA(0, windowClass.lpszClassName, "Handmade Hero", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
                                       CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, 0, 0, Instance, 0);
@@ -338,6 +340,10 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE, LPSTR, int) {
             Win32InitDSound(Window, SoundOutput.SamplePerSec, SoundOutput.BufferSize);
             Win32FillSoundBuffer(&SoundOutput, 0, SoundOutput.SampleLatency * SoundOutput.BytesPerSample);
             SecondaryBuffer->Play(0, 0, DSBPLAY_LOOPING);
+
+            uint64_t LastCycleCount = __rdtsc();
+            LARGE_INTEGER LastCounter;
+            QueryPerformanceCounter(&LastCounter);
 
             Running = true;
             while (Running) {
@@ -389,10 +395,9 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE, LPSTR, int) {
                 DWORD PlayCursor;
                 DWORD WriteCursor;
                 if (SUCCEEDED(SecondaryBuffer->GetCurrentPosition(&PlayCursor, &WriteCursor))) {
-                    DWORD BytesToLock =
-                        (SoundOutput.RunningSampleIndex * SoundOutput.BytesPerSample) % SoundOutput.BufferSize;
-                    DWORD TargetCursor = (PlayCursor + (SoundOutput.SampleLatency * SoundOutput.BytesPerSample)) %
-                                         SoundOutput.BufferSize;
+                    DWORD BytesToLock = (SoundOutput.RunningSampleIndex * SoundOutput.BytesPerSample) % SoundOutput.BufferSize;
+                    DWORD TargetCursor =
+                        (PlayCursor + (SoundOutput.SampleLatency * SoundOutput.BytesPerSample)) % SoundOutput.BufferSize;
                     DWORD BytesToWrite = 0;
                     if (BytesToLock > TargetCursor) {
                         BytesToWrite = SoundOutput.BufferSize - BytesToLock;
@@ -408,6 +413,22 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE, LPSTR, int) {
 
                 Win32WindowSize Size = Win32GetWindowSize(Window);
                 Win32DisplayBufferInWindow(DeviceContext, &GBuffer, Size.Width, Size.Height);
+
+                uint64_t EndCycleCount = __rdtsc();
+                LARGE_INTEGER EndCounter;
+                QueryPerformanceCounter(&EndCounter);
+
+                uint64_t CyclesElepased = EndCycleCount - LastCycleCount;
+                uint64_t CounterElapsed = EndCounter.QuadPart - LastCounter.QuadPart;
+                float Perf = (1000.f * (float)CounterElapsed) / (float)PerfCounterFrequency.QuadPart;
+                float Fps = (float)PerfCounterFrequency.QuadPart / (float)CounterElapsed;
+                float Mcpf = (float)CyclesElepased / (1000.f * 1000.f);
+                char Buffer[1024];
+                sprintf(Buffer, "%.2f ms/f, %.2f f/s, %.2f mc/f\n", Perf, Fps, Mcpf);
+                OutputDebugStringA(Buffer);
+
+                LastCycleCount = EndCycleCount;
+                LastCounter = EndCounter;
             }
             ReleaseDC(Window, DeviceContext);
         } else {
